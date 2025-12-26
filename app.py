@@ -121,7 +121,7 @@ class EmailAlertSystem:
                 <div style="padding: 20px; margin-top: 20px;">
                   <p style="font-size: 14px; color: #666;">
                     ⚡ Automated alert from Enhanced Crowd Counter<br>
-                    📧 Next alert after 5 min cooldown
+                    🔧 Next alert after 5 min cooldown
                   </p>
                 </div>
                 
@@ -698,7 +698,7 @@ def main():
         
         st.divider()
         
-        st.markdown("### 📧 Email Alert Settings")
+        st.markdown("### 🔧 Email Alert Settings")
         
         if SMTP_CONFIG:
             st.success(f"✅ SMTP Configured\n\n📤 Sender: {SMTP_CONFIG['sender_email']}")
@@ -719,7 +719,7 @@ def main():
         st.divider()
         st.info("**Video:** Frame skip 3-5\n\n**Webcam:** YOLO conf 0.3-0.4")
     
-    tab1, tab2 = st.tabs(["📹 Video Processing", "📷 Live Webcam"])
+    tab1, tab2 = st.tabs(["🎬 Video Processing", "📷 Live Webcam"])
     
     # ========== TAB 1: VIDEO ==========
     with tab1:
@@ -781,7 +781,7 @@ def main():
                         if stats.get('email_sent', False):
                             st.success("✅ Email alert sent successfully!")
                         
-                        st.markdown("### 📹 Processed Video")
+                        st.markdown("### 🎬 Processed Video")
                         try:
                             st.video(stats['output_path'])
                         except:
@@ -798,7 +798,7 @@ def main():
                         except:
                             pass
     
-    # ========== TAB 2: WEBCAM WITH WEBRTC ==========
+    # ========== TAB 2: WEBCAM WITH WEBRTC - FIXED VERSION ==========
     with tab2:
         st.markdown("### 🧠 Adaptive Hybrid Strategy: YOLO + CSRNet")
         
@@ -814,57 +814,64 @@ def main():
             use_adaptive = st.checkbox("Enable Adaptive Mode", value=True, key="use_adaptive")
             
             if st.button("🔄 Reset Tracker"):
-                if 'ctx' in st.session_state and st.session_state.ctx.video_processor:
-                    if st.session_state.ctx.video_processor.hybrid_counter:
-                        st.session_state.ctx.video_processor.hybrid_counter.reset_tracker()
-                        st.success("✅ Tracker reset!")
+                if 'hybrid_counter' in st.session_state and st.session_state.hybrid_counter:
+                    st.session_state.hybrid_counter.reset_tracker()
+                    st.success("✅ Tracker reset!")
         
         with col2:
             st.markdown("#### 📷 Live Webcam Feed (WebRTC)")
             
-            # Load models before starting webcam
+            # ✅ FIX: Check model path first
             if not Path(model_path).exists():
                 st.error(f"❌ CSRNet model not found: {model_path}")
                 st.info("Upload your trained model file first!")
             else:
-                # Initialize models only once
+                # ✅ FIX: Initialize models in session state BEFORE WebRTC
                 if 'models_loaded' not in st.session_state:
                     st.session_state.models_loaded = False
                 
                 if not st.session_state.models_loaded:
-                    with st.spinner("🔄 Loading AI models... This may take a moment..."):
+                    with st.spinner("🔄 Loading AI models... Please wait..."):
                         try:
                             csrnet = load_trained_model(model_path)
                             yolo = load_yolo_model()
                             st.session_state.csrnet = csrnet
                             st.session_state.yolo = yolo
                             st.session_state.models_loaded = True
-                            st.success("✅ Models loaded successfully!")
-                            time.sleep(1)
+                            st.success("✅ Models loaded!")
+                            time.sleep(0.5)
                             st.rerun()
                         except Exception as e:
-                            st.error(f"❌ Error loading models: {e}")
+                            st.error(f"❌ Model loading failed: {e}")
                             st.stop()
                 
-                # Create video processor with current settings
-                if 'video_processor' not in st.session_state or st.session_state.get('settings_changed', True):
-                    video_processor = VideoProcessor()
-                    video_processor.hybrid_counter = AdaptiveHybridCounter(
-                        st.session_state.csrnet, 
+                # ✅ FIX: Initialize hybrid counter in session state
+                if 'hybrid_counter' not in st.session_state:
+                    st.session_state.hybrid_counter = AdaptiveHybridCounter(
+                        st.session_state.csrnet,
                         st.session_state.yolo
                     )
+                
+                # ✅ FIX: Initialize video processor with proper error handling
+                if 'video_processor' not in st.session_state:
+                    video_processor = VideoProcessor()
+                    video_processor.hybrid_counter = st.session_state.hybrid_counter
                     video_processor.alert_threshold = webcam_alert
                     video_processor.yolo_conf = yolo_conf
                     video_processor.use_adaptive = use_adaptive
                     video_processor.density_threshold = density_threshold
                     video_processor.email_system = EmailAlertSystem(recipient_list, enabled=enable_email)
                     st.session_state.video_processor = video_processor
-                    st.session_state.settings_changed = False
                 
-                # Important: Show permission warning
+                # Update settings dynamically
+                st.session_state.video_processor.alert_threshold = webcam_alert
+                st.session_state.video_processor.yolo_conf = yolo_conf
+                st.session_state.video_processor.use_adaptive = use_adaptive
+                st.session_state.video_processor.density_threshold = density_threshold
+                
                 st.warning("⚠️ **IMPORTANT**: Allow camera permission when browser asks!")
                 
-                # Start WebRTC streamer
+                # ✅ FIX: Use lambda with session_state reference
                 ctx = webrtc_streamer(
                     key="crowd-detection-live",
                     mode=WebRtcMode.SENDRECV,
@@ -880,15 +887,6 @@ def main():
                     },
                     async_processing=True,
                 )
-                
-                # Update settings dynamically
-                if ctx.video_processor:
-                    ctx.video_processor.alert_threshold = webcam_alert
-                    ctx.video_processor.yolo_conf = yolo_conf
-                    ctx.video_processor.use_adaptive = use_adaptive
-                    ctx.video_processor.density_threshold = density_threshold
-                
-                st.session_state.ctx = ctx
                 
                 # Status display
                 if ctx.state.playing:
@@ -914,7 +912,7 @@ def main():
                     3. Wait 2-3 seconds for processing to begin
                     4. Adjust settings in real-time using sliders
                     """)
-                    
+                
                 # Troubleshooting section
                 with st.expander("❓ Camera Not Working? Click Here"):
                     st.markdown("""
@@ -958,7 +956,6 @@ def main():
                     - Look for "getUserMedia" or "NotAllowedError"
                     """)
                 
-                # Additional info
                 st.divider()
                 st.caption("🔒 Privacy: Video is processed locally in your browser. Nothing is stored or uploaded.")
 
