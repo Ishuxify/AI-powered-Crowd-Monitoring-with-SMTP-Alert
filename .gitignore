@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+
+# Streamlit secrets (IMPORTANT!)
+.streamlit/secrets.toml
+.streamlit/config.toml
+# Temporary files
+*.mp4
+*.avi
+*.mov
+temp/
+*.jpg
+*.png
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
