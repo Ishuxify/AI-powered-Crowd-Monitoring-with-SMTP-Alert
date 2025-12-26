@@ -825,49 +825,142 @@ def main():
             # Load models before starting webcam
             if not Path(model_path).exists():
                 st.error(f"❌ CSRNet model not found: {model_path}")
+                st.info("Upload your trained model file first!")
             else:
-                # Initialize models
+                # Initialize models only once
                 if 'models_loaded' not in st.session_state:
-                    with st.spinner("Loading models..."):
+                    st.session_state.models_loaded = False
+                
+                if not st.session_state.models_loaded:
+                    with st.spinner("🔄 Loading AI models... This may take a moment..."):
                         try:
                             csrnet = load_trained_model(model_path)
                             yolo = load_yolo_model()
                             st.session_state.csrnet = csrnet
                             st.session_state.yolo = yolo
                             st.session_state.models_loaded = True
-                            st.success("✓ Models loaded!")
+                            st.success("✅ Models loaded successfully!")
+                            time.sleep(1)
+                            st.rerun()
                         except Exception as e:
-                            st.error(f"Error loading models: {e}")
+                            st.error(f"❌ Error loading models: {e}")
                             st.stop()
                 
-                # Create video processor
-                video_processor = VideoProcessor()
-                video_processor.hybrid_counter = AdaptiveHybridCounter(
-                    st.session_state.csrnet, 
-                    st.session_state.yolo
-                )
-                video_processor.alert_threshold = webcam_alert
-                video_processor.yolo_conf = yolo_conf
-                video_processor.use_adaptive = use_adaptive
-                video_processor.density_threshold = density_threshold
-                video_processor.email_system = EmailAlertSystem(recipient_list, enabled=enable_email)
+                # Create video processor with current settings
+                if 'video_processor' not in st.session_state or st.session_state.get('settings_changed', True):
+                    video_processor = VideoProcessor()
+                    video_processor.hybrid_counter = AdaptiveHybridCounter(
+                        st.session_state.csrnet, 
+                        st.session_state.yolo
+                    )
+                    video_processor.alert_threshold = webcam_alert
+                    video_processor.yolo_conf = yolo_conf
+                    video_processor.use_adaptive = use_adaptive
+                    video_processor.density_threshold = density_threshold
+                    video_processor.email_system = EmailAlertSystem(recipient_list, enabled=enable_email)
+                    st.session_state.video_processor = video_processor
+                    st.session_state.settings_changed = False
+                
+                # Important: Show permission warning
+                st.warning("⚠️ **IMPORTANT**: Allow camera permission when browser asks!")
                 
                 # Start WebRTC streamer
                 ctx = webrtc_streamer(
-                    key="crowd-detection",
+                    key="crowd-detection-live",
                     mode=WebRtcMode.SENDRECV,
                     rtc_configuration=RTC_CONFIGURATION,
-                    video_processor_factory=lambda: video_processor,
-                    media_stream_constraints={"video": True, "audio": False},
+                    video_processor_factory=lambda: st.session_state.video_processor,
+                    media_stream_constraints={
+                        "video": {
+                            "width": {"min": 640, "ideal": 1280, "max": 1920},
+                            "height": {"min": 480, "ideal": 720, "max": 1080},
+                            "frameRate": {"ideal": 30}
+                        },
+                        "audio": False
+                    },
                     async_processing=True,
                 )
                 
+                # Update settings dynamically
+                if ctx.video_processor:
+                    ctx.video_processor.alert_threshold = webcam_alert
+                    ctx.video_processor.yolo_conf = yolo_conf
+                    ctx.video_processor.use_adaptive = use_adaptive
+                    ctx.video_processor.density_threshold = density_threshold
+                
                 st.session_state.ctx = ctx
                 
+                # Status display
                 if ctx.state.playing:
-                    st.success("🎥 Webcam is running!")
+                    st.success("✅ Webcam ACTIVE - Processing frames...")
+                    
+                    col_a, col_b, col_c = st.columns(3)
+                    with col_a:
+                        st.metric("Alert Threshold", webcam_alert)
+                    with col_b:
+                        st.metric("YOLO Conf", f"{yolo_conf:.2f}")
+                    with col_c:
+                        st.metric("Mode", "Adaptive" if use_adaptive else "YOLO+CSRNet")
+                        
+                elif ctx.state.signalling:
+                    st.info("🔄 Connecting to camera... Please wait...")
                 else:
-                    st.info("💡 Click 'START' to begin live detection with email alerts")
+                    st.info("💡 **Click START button above** to activate webcam")
+                    
+                    st.markdown("""
+                    ### 📋 Quick Start Guide:
+                    1. Click the **START** button above ⬆️
+                    2. **Allow camera access** in browser popup
+                    3. Wait 2-3 seconds for processing to begin
+                    4. Adjust settings in real-time using sliders
+                    """)
+                    
+                # Troubleshooting section
+                with st.expander("❓ Camera Not Working? Click Here"):
+                    st.markdown("""
+                    ### 🔧 Troubleshooting Steps:
+                    
+                    #### 1️⃣ Browser Permission
+                    - Look for 🔒 or 📷 icon in address bar
+                    - Click it and select "Allow" for camera
+                    - Refresh page after allowing
+                    
+                    #### 2️⃣ Camera Already in Use?
+                    - Close Zoom, Teams, Skype, etc.
+                    - Close other browser tabs using camera
+                    - Check Windows Camera app (close if open)
+                    
+                    #### 3️⃣ Browser Compatibility
+                    - ✅ **Chrome** (Recommended)
+                    - ✅ **Edge** (Recommended)  
+                    - ✅ Firefox
+                    - ⚠️ Safari (Limited support)
+                    - ❌ Mobile browsers (Not supported)
+                    
+                    #### 4️⃣ HTTPS Required
+                    - Streamlit Cloud: ✅ Automatic HTTPS
+                    - Localhost: Use `http://localhost:8501`
+                    - Network access: Must use HTTPS
+                    
+                    #### 5️⃣ Still Not Working?
+                    ```
+                    - Try Incognito/Private mode
+                    - Clear browser cache (Ctrl+Shift+Delete)
+                    - Disable browser extensions
+                    - Test camera: https://webcamtests.com
+                    - Try different browser
+                    - Restart browser completely
+                    ```
+                    
+                    #### 6️⃣ Console Errors
+                    - Press F12 to open Developer Console
+                    - Check for red error messages
+                    - Look for "getUserMedia" or "NotAllowedError"
+                    """)
+                
+                # Additional info
+                st.divider()
+                st.caption("🔒 Privacy: Video is processed locally in your browser. Nothing is stored or uploaded.")
 
 
 if __name__ == "__main__":
