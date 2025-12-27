@@ -558,6 +558,7 @@ def create_analytics_graphs(stats):
     
     with col1:
         st.markdown("### 📊 Count Distribution")
+      
         fig2 = go.Figure(data=[go.Histogram(x=df['Count'], nbinsx=30, marker_color='#00d4ff', opacity=0.75)])
         fig2.update_layout(title="Crowd Count Distribution", xaxis_title="Count", yaxis_title="Frequency", template='plotly_dark', height=350)
         st.plotly_chart(fig2, use_container_width=True)
@@ -799,6 +800,7 @@ def main():
                             pass
     
     # ========== TAB 2: WEBCAM WITH WEBRTC - FIXED VERSION ==========
+    # ========== TAB 2: WEBCAM WITH WEBRTC - FIXED VERSION ==========
     with tab2:
         st.markdown("### 🧠 Adaptive Hybrid Strategy: YOLO + CSRNet")
         
@@ -845,38 +847,35 @@ def main():
                             st.error(f"❌ Model loading failed: {e}")
                             st.stop()
                 
-                # ✅ FIX: Initialize hybrid counter in session state
+                # ✅ FIX: Initialize hybrid counter ONCE
                 if 'hybrid_counter' not in st.session_state:
                     st.session_state.hybrid_counter = AdaptiveHybridCounter(
                         st.session_state.csrnet,
                         st.session_state.yolo
                     )
                 
-                # ✅ FIX: Initialize video processor with proper error handling
-                if 'video_processor' not in st.session_state:
-                    video_processor = VideoProcessor()
-                    video_processor.hybrid_counter = st.session_state.hybrid_counter
-                    video_processor.alert_threshold = webcam_alert
-                    video_processor.yolo_conf = yolo_conf
-                    video_processor.use_adaptive = use_adaptive
-                    video_processor.density_threshold = density_threshold
-                    video_processor.email_system = EmailAlertSystem(recipient_list, enabled=enable_email)
-                    st.session_state.video_processor = video_processor
-                
-                # Update settings dynamically
-                st.session_state.video_processor.alert_threshold = webcam_alert
-                st.session_state.video_processor.yolo_conf = yolo_conf
-                st.session_state.video_processor.use_adaptive = use_adaptive
-                st.session_state.video_processor.density_threshold = density_threshold
+                # ✅ CRITICAL FIX: Create factory that doesn't rely on session_state
+                # Store references in module-level variables accessible from threads
+                def create_video_processor():
+                    """Factory function that creates processor with current settings"""
+                    processor = VideoProcessor()
+                    # Access session_state values HERE, not in thread
+                    processor.hybrid_counter = st.session_state.hybrid_counter
+                    processor.alert_threshold = webcam_alert
+                    processor.yolo_conf = yolo_conf
+                    processor.use_adaptive = use_adaptive
+                    processor.density_threshold = density_threshold
+                    processor.email_system = EmailAlertSystem(recipient_list, enabled=enable_email)
+                    return processor
                 
                 st.warning("⚠️ **IMPORTANT**: Allow camera permission when browser asks!")
                 
-                # ✅ FIX: Use lambda with session_state reference
+                # ✅ FIX: Use proper factory function
                 ctx = webrtc_streamer(
                     key="crowd-detection-live",
                     mode=WebRtcMode.SENDRECV,
                     rtc_configuration=RTC_CONFIGURATION,
-                    video_processor_factory=lambda: st.session_state.video_processor,
+                    video_processor_factory=create_video_processor,  # ← Fixed: no lambda, no session_state access
                     media_stream_constraints={
                         "video": {
                             "width": {"min": 640, "ideal": 1280, "max": 1920},
@@ -958,7 +957,6 @@ def main():
                 
                 st.divider()
                 st.caption("🔒 Privacy: Video is processed locally in your browser. Nothing is stored or uploaded.")
-
 
 if __name__ == "__main__":
     main()
