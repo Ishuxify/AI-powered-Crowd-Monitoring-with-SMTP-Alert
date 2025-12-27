@@ -26,6 +26,29 @@ import pandas as pd
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 import av
 
+# BEFORE the "# Page config" section
+
+import warnings
+import logging
+import asyncio
+import sys
+
+# Suppress all warnings
+warnings.filterwarnings('ignore')
+
+# Configure logging to suppress WebRTC errors
+logging.getLogger('aioice').setLevel(logging.CRITICAL)
+logging.getLogger('aiortc').setLevel(logging.CRITICAL)
+logging.getLogger('av').setLevel(logging.CRITICAL)
+logging.getLogger('asyncio').setLevel(logging.CRITICAL)
+
+# Fix asyncio event loop for Python 3.11+
+if sys.platform == 'linux':
+    try:
+        asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
+    except:
+        pass
+
 # Page config
 st.set_page_config(
     page_title="Deep Vision Crowd Monitor: AI for Density Estimation and Overcrowding Detection",
@@ -42,8 +65,19 @@ IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 # RTC Configuration for WebRTC
+# Replace the existing RTC_CONFIGURATION (around line 47) with this:
+
 RTC_CONFIGURATION = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    {
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]},
+            {"urls": ["stun:stun1.l.google.com:19302"]},
+            {"urls": ["stun:stun2.l.google.com:19302"]}
+        ],
+        "iceTransportPolicy": "all",
+        "bundlePolicy": "max-bundle",
+        "rtcpMuxPolicy": "require"
+    }
 )
 
 # ==================== 🔐 SECURE SMTP CREDENTIALS ====================
