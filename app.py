@@ -64,21 +64,26 @@ GT_DOWNSAMPLE = 8
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
-# RTC Configuration for WebRTC
-# Replace the existing RTC_CONFIGURATION (around line 47) with this:
-
 RTC_CONFIGURATION = RTCConfiguration(
     {
         "iceServers": [
             {"urls": ["stun:stun.l.google.com:19302"]},
-            {"urls": ["stun:stun1.l.google.com:19302"]},
-            {"urls": ["stun:stun2.l.google.com:19302"]}
+
+            {
+                "urls": [
+                    "turn:global.relay.metered.ca:80",
+                    "turn:global.relay.metered.ca:443",
+                    "turn:global.relay.metered.ca:443?transport=tcp"
+                ],
+                "username": st.secrets["turn"]["username"],
+                "credential": st.secrets["turn"]["password"]
+            }
         ],
-        "iceTransportPolicy": "all",
-        "bundlePolicy": "max-bundle",
-        "rtcpMuxPolicy": "require"
+        "iceTransportPolicy": "all"
     }
 )
+
+
 
 # ==================== 🔐 SECURE SMTP CREDENTIALS ====================
 def get_smtp_config():
