@@ -9,3 +9,6 @@ libavdevice-dev
 libavutil-dev
 libswscale-dev
 libswresample-dev
+pkg-config
+python3-dev
+build-essential
