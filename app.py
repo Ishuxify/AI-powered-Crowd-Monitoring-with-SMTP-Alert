@@ -70,7 +70,6 @@ class EmailAlertSystem:
     def __init__(self, recipient_emails, enabled=True):
         if SMTP_CONFIG is None:
             self.enabled = False
-            st.warning("⚠️ SMTP credentials not configured in secrets.toml")
             return
         
         self.smtp_server = SMTP_CONFIG['smtp_server']
@@ -148,7 +147,6 @@ class EmailAlertSystem:
             return True
             
         except Exception as e:
-            st.error(f"❌ Email failed: {e}")
             return False
 
 
@@ -189,8 +187,7 @@ def load_trained_model(model_path):
 
 @st.cache_resource
 def load_yolo_model():
-    with st.spinner("Loading YOLOv8 model..."):
-        yolo = YOLO('yolov8n.pt')
+    yolo = YOLO('yolov8n.pt')
     return yolo
 
 
@@ -558,7 +555,6 @@ def create_analytics_graphs(stats):
     
     with col1:
         st.markdown("### 📊 Count Distribution")
-      
         fig2 = go.Figure(data=[go.Histogram(x=df['Count'], nbinsx=30, marker_color='#00d4ff', opacity=0.75)])
         fig2.update_layout(title="Crowd Count Distribution", xaxis_title="Count", yaxis_title="Frequency", template='plotly_dark', height=350)
         st.plotly_chart(fig2, use_container_width=True)
@@ -635,7 +631,6 @@ class VideoProcessor:
         if self.hybrid_counter is None:
             return av.VideoFrame.from_ndarray(img, format="bgr24")
         
-        # Process frame
         try:
             annotated, density_map, final_count, mode, yolo_count = self.hybrid_counter.predict_adaptive(
                 img, 
@@ -645,21 +640,17 @@ class VideoProcessor:
             )
             
             h, w = annotated.shape[:2]
-            
-            # Add info overlay
             cv2.rectangle(annotated, (0, 0), (w, 140), (0, 0, 0), -1)
             mode_color = (255, 165, 0) if mode == "YOLO + CSRNet" else (147, 112, 219)
             
             cv2.putText(annotated, "Adaptive Hybrid: YOLO + CSRNet", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
             cv2.putText(annotated, f"Mode: {mode}", (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.6, mode_color, 2)
             
-            # Alert handling
             if final_count > self.alert_threshold:
                 cv2.putText(annotated, f"ALERT! Count: {int(final_count)} > {self.alert_threshold}", (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
                 cv2.rectangle(annotated, (0, h - 50), (w, h), (0, 0, 255), -1)
                 cv2.putText(annotated, f"ALERT! Count Exceeded!", (20, h - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                 
-                # Send email (with cooldown)
                 if self.email_system and self.email_system.enabled and not self.email_sent:
                     try:
                         alert_image_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
@@ -694,11 +685,8 @@ def main():
     
     with st.sidebar:
         st.header("⚙️ Configuration")
-        
         model_path = st.text_input("CSRNet Model Path", value="best_crowd_counter_objects.pth")
-        
         st.divider()
-        
         st.markdown("### 🔧 Email Alert Settings")
         
         if SMTP_CONFIG:
@@ -722,10 +710,9 @@ def main():
     
     tab1, tab2 = st.tabs(["🎬 Video Processing", "📷 Live Webcam"])
     
-    # ========== TAB 1: VIDEO ==========
+    # TAB 1 (Video processing - tera existing code same rahega)
     with tab1:
         st.markdown("### ✅ CSRNet Direct Density Counting")
-        
         col1, col2 = st.columns([1, 2])
         
         with col1:
@@ -799,11 +786,10 @@ def main():
                         except:
                             pass
     
-    # ========== TAB 2: WEBCAM WITH WEBRTC - COMPLETELY FIXED ==========
+    # TAB 2 - FIXED WEBCAM CODE
     with tab2:
         st.markdown("### 🧠 Adaptive Hybrid Strategy: YOLO + CSRNet")
-        
-        st.info("✅ **WebRTC Enabled** - Works on Streamlit Cloud! Browser camera will be used.")
+        st.info("✅ **WebRTC Enabled** - Browser camera will be used.")
         
         col1, col2 = st.columns([1, 2])
         
@@ -822,155 +808,73 @@ def main():
         with col2:
             st.markdown("#### 📷 Live Webcam Feed (WebRTC)")
             
-            # ✅ Check model path
             if not Path(model_path).exists():
                 st.error(f"❌ CSRNet model not found: {model_path}")
-                st.info("Upload your trained model file first!")
             else:
-                # ✅ Step 1: Load models ONCE
+                # Initialize models
                 if 'models_loaded' not in st.session_state:
                     st.session_state.models_loaded = False
                 
                 if not st.session_state.models_loaded:
-                    with st.spinner("🔄 Loading AI models... Please wait..."):
+                    with st.spinner("🔄 Loading models..."):
                         try:
-                            csrnet = load_trained_model(model_path)
-                            yolo = load_yolo_model()
-                            st.session_state.csrnet = csrnet
-                            st.session_state.yolo = yolo
+                            st.session_state.csrnet = load_trained_model(model_path)
+                            st.session_state.yolo = load_yolo_model()
                             st.session_state.models_loaded = True
                             st.success("✅ Models loaded!")
                             time.sleep(0.5)
                             st.rerun()
                         except Exception as e:
-                            st.error(f"❌ Model loading failed: {e}")
+                            st.error(f"❌ Failed: {e}")
                             st.stop()
                 
-                # ✅ Step 2: Create hybrid counter ONCE
+                # Create counter
                 if 'hybrid_counter' not in st.session_state:
                     st.session_state.hybrid_counter = AdaptiveHybridCounter(
-                        st.session_state.csrnet,
-                        st.session_state.yolo
+                        st.session_state.csrnet, st.session_state.yolo
                     )
                 
-                # ✅ CRITICAL FIX: Capture references OUTSIDE factory function
-                # Store in variables accessible from thread context
-                hybrid_counter_ref = st.session_state.hybrid_counter
-                email_system_ref = EmailAlertSystem(recipient_list, enabled=enable_email)
+                # 🔥 CRITICAL: Capture BEFORE factory
+                counter_ref = st.session_state.hybrid_counter
+                email_ref = EmailAlertSystem(recipient_list, enabled=enable_email)
+                alert_val = webcam_alert
+                conf_val = yolo_conf
+                adaptive_val = use_adaptive
+                density_val = density_threshold
                 
-                # Capture current slider values
-                alert_threshold_val = webcam_alert
-                yolo_conf_val = yolo_conf
-                use_adaptive_val = use_adaptive
-                density_threshold_val = density_threshold
+                # Factory function
+                def make_processor():
+                    p = VideoProcessor()
+                    p.hybrid_counter = counter_ref
+                    p.alert_threshold = alert_val
+                    p.yolo_conf = conf_val
+                    p.use_adaptive = adaptive_val
+                    p.density_threshold = density_val
+                    p.email_system = email_ref
+                    return p
                 
-                # ✅ Factory function with captured values (NO session_state access)
-                def create_video_processor():
-                    """Factory that uses captured values from main thread"""
-                    processor = VideoProcessor()
-                    processor.hybrid_counter = hybrid_counter_ref  # ← Uses captured reference
-                    processor.alert_threshold = alert_threshold_val
-                    processor.yolo_conf = yolo_conf_val
-                    processor.use_adaptive = use_adaptive_val
-                    processor.density_threshold = density_threshold_val
-                    processor.email_system = email_system_ref
-                    return processor
+                st.warning("⚠️ Allow camera permission!")
                 
-                st.warning("⚠️ **IMPORTANT**: Allow camera permission when browser asks!")
-                
-                # ✅ WebRTC streamer with fixed factory
                 ctx = webrtc_streamer(
-                    key="crowd-detection-live",
+                    key="crowd-live",
                     mode=WebRtcMode.SENDRECV,
                     rtc_configuration=RTC_CONFIGURATION,
-                    video_processor_factory=create_video_processor,
-                    media_stream_constraints={
-                        "video": {
-                            "width": {"min": 640, "ideal": 1280, "max": 1920},
-                            "height": {"min": 480, "ideal": 720, "max": 1080},
-                            "frameRate": {"ideal": 30}
-                        },
-                        "audio": False
-                    },
+                    video_processor_factory=make_processor,
+                    media_stream_constraints={"video": True, "audio": False},
                     async_processing=True,
                 )
                 
-                # Status display
                 if ctx.state.playing:
-                    st.success("✅ Webcam ACTIVE - Processing frames...")
-                    
+                    st.success("✅ ACTIVE!")
                     col_a, col_b, col_c = st.columns(3)
                     with col_a:
-                        st.metric("Alert Threshold", webcam_alert)
+                        st.metric("Alert", webcam_alert)
                     with col_b:
-                        st.metric("YOLO Conf", f"{yolo_conf:.2f}")
+                        st.metric("YOLO", f"{yolo_conf:.2f}")
                     with col_c:
-                        st.metric("Mode", "Adaptive" if use_adaptive else "YOLO+CSRNet")
-                    
-                    st.info("💡 **Note:** Settings are captured when START is clicked. To update settings, click STOP then START again.")
-                        
-                elif ctx.state.signalling:
-                    st.info("🔄 Connecting to camera... Please wait...")
+                        st.metric("Mode", "Adaptive" if use_adaptive else "Fixed")
                 else:
-                    st.info("💡 **Click START button above** to activate webcam")
-                    
-                    st.markdown("""
-                    ### 📋 Quick Start Guide:
-                    1. **Adjust settings** using sliders on the left
-                    2. Click the **START** button above ⬆️
-                    3. **Allow camera access** in browser popup
-                    4. Wait 2-3 seconds for processing to begin
-                    5. To change settings: Click **STOP** → Adjust sliders → Click **START**
-                    """)
-                
-                # Troubleshooting section
-                with st.expander("❓ Camera Not Working? Click Here"):
-                    st.markdown("""
-                    ### 🔧 Troubleshooting Steps:
-                    
-                    #### 1️⃣ Browser Permission
-                    - Look for 🔒 or 📷 icon in address bar
-                    - Click it and select "Allow" for camera
-                    - Refresh page after allowing
-                    
-                    #### 2️⃣ Camera Already in Use?
-                    - Close Zoom, Teams, Skype, etc.
-                    - Close other browser tabs using camera
-                    - Check Windows Camera app (close if open)
-                    
-                    #### 3️⃣ Browser Compatibility
-                    - ✅ **Chrome** (Recommended)
-                    - ✅ **Edge** (Recommended)  
-                    - ✅ Firefox
-                    - ⚠️ Safari (Limited support)
-                    - ❌ Mobile browsers (Not supported)
-                    
-                    #### 4️⃣ HTTPS Required
-                    - Streamlit Cloud: ✅ Automatic HTTPS
-                    - Localhost: Use `http://localhost:8501`
-                    - Network access: Must use HTTPS
-                    
-                    #### 5️⃣ Still Not Working?
-                    - Try Incognito/Private mode
-                    - Clear browser cache (Ctrl+Shift+Delete)
-                    - Disable browser extensions
-                    - Test camera at: https://webcamtests.com
-                    - Try different browser
-                    - Restart browser completely
-                    
-                    #### 6️⃣ Console Errors (Advanced)
-                    - Press **F12** to open Developer Console
-                    - Look in **Console** tab for errors
-                    - Check for "getUserMedia" or "NotAllowedError"
-                    - Share errors in support if needed
-                    
-                    #### 7️⃣ Model Loading Issues
-                    - Ensure `best_crowd_counter_objects.pth` exists
-                    - Check file path in sidebar settings
-                    - Wait for "Models loaded!" message before clicking START
-                    """)
-                
-                st.divider()
-                st.caption("🔒 Privacy: Video is processed locally in your browser. Nothing is stored or uploaded.")
+                    st.info("💡 Click START button to activate webcam")
+
 if __name__ == "__main__":
     main()
