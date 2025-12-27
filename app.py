@@ -799,8 +799,7 @@ def main():
                         except:
                             pass
     
-    # ========== TAB 2: WEBCAM WITH WEBRTC - FIXED VERSION ==========
-    # ========== TAB 2: WEBCAM WITH WEBRTC - FIXED VERSION ==========
+    # ========== TAB 2: WEBCAM WITH WEBRTC - COMPLETELY FIXED ==========
     with tab2:
         st.markdown("### 🧠 Adaptive Hybrid Strategy: YOLO + CSRNet")
         
@@ -823,12 +822,12 @@ def main():
         with col2:
             st.markdown("#### 📷 Live Webcam Feed (WebRTC)")
             
-            # ✅ FIX: Check model path first
+            # ✅ Check model path
             if not Path(model_path).exists():
                 st.error(f"❌ CSRNet model not found: {model_path}")
                 st.info("Upload your trained model file first!")
             else:
-                # ✅ FIX: Initialize models in session state BEFORE WebRTC
+                # ✅ Step 1: Load models ONCE
                 if 'models_loaded' not in st.session_state:
                     st.session_state.models_loaded = False
                 
@@ -847,35 +846,44 @@ def main():
                             st.error(f"❌ Model loading failed: {e}")
                             st.stop()
                 
-                # ✅ FIX: Initialize hybrid counter ONCE
+                # ✅ Step 2: Create hybrid counter ONCE
                 if 'hybrid_counter' not in st.session_state:
                     st.session_state.hybrid_counter = AdaptiveHybridCounter(
                         st.session_state.csrnet,
                         st.session_state.yolo
                     )
                 
-                # ✅ CRITICAL FIX: Create factory that doesn't rely on session_state
-                # Store references in module-level variables accessible from threads
+                # ✅ CRITICAL FIX: Capture references OUTSIDE factory function
+                # Store in variables accessible from thread context
+                hybrid_counter_ref = st.session_state.hybrid_counter
+                email_system_ref = EmailAlertSystem(recipient_list, enabled=enable_email)
+                
+                # Capture current slider values
+                alert_threshold_val = webcam_alert
+                yolo_conf_val = yolo_conf
+                use_adaptive_val = use_adaptive
+                density_threshold_val = density_threshold
+                
+                # ✅ Factory function with captured values (NO session_state access)
                 def create_video_processor():
-                    """Factory function that creates processor with current settings"""
+                    """Factory that uses captured values from main thread"""
                     processor = VideoProcessor()
-                    # Access session_state values HERE, not in thread
-                    processor.hybrid_counter = st.session_state.hybrid_counter
-                    processor.alert_threshold = webcam_alert
-                    processor.yolo_conf = yolo_conf
-                    processor.use_adaptive = use_adaptive
-                    processor.density_threshold = density_threshold
-                    processor.email_system = EmailAlertSystem(recipient_list, enabled=enable_email)
+                    processor.hybrid_counter = hybrid_counter_ref  # ← Uses captured reference
+                    processor.alert_threshold = alert_threshold_val
+                    processor.yolo_conf = yolo_conf_val
+                    processor.use_adaptive = use_adaptive_val
+                    processor.density_threshold = density_threshold_val
+                    processor.email_system = email_system_ref
                     return processor
                 
                 st.warning("⚠️ **IMPORTANT**: Allow camera permission when browser asks!")
                 
-                # ✅ FIX: Use proper factory function
+                # ✅ WebRTC streamer with fixed factory
                 ctx = webrtc_streamer(
                     key="crowd-detection-live",
                     mode=WebRtcMode.SENDRECV,
                     rtc_configuration=RTC_CONFIGURATION,
-                    video_processor_factory=create_video_processor,  # ← Fixed: no lambda, no session_state access
+                    video_processor_factory=create_video_processor,
                     media_stream_constraints={
                         "video": {
                             "width": {"min": 640, "ideal": 1280, "max": 1920},
@@ -898,6 +906,8 @@ def main():
                         st.metric("YOLO Conf", f"{yolo_conf:.2f}")
                     with col_c:
                         st.metric("Mode", "Adaptive" if use_adaptive else "YOLO+CSRNet")
+                    
+                    st.info("💡 **Note:** Settings are captured when START is clicked. To update settings, click STOP then START again.")
                         
                 elif ctx.state.signalling:
                     st.info("🔄 Connecting to camera... Please wait...")
@@ -906,10 +916,11 @@ def main():
                     
                     st.markdown("""
                     ### 📋 Quick Start Guide:
-                    1. Click the **START** button above ⬆️
-                    2. **Allow camera access** in browser popup
-                    3. Wait 2-3 seconds for processing to begin
-                    4. Adjust settings in real-time using sliders
+                    1. **Adjust settings** using sliders on the left
+                    2. Click the **START** button above ⬆️
+                    3. **Allow camera access** in browser popup
+                    4. Wait 2-3 seconds for processing to begin
+                    5. To change settings: Click **STOP** → Adjust sliders → Click **START**
                     """)
                 
                 # Troubleshooting section
@@ -940,23 +951,26 @@ def main():
                     - Network access: Must use HTTPS
                     
                     #### 5️⃣ Still Not Working?
-                    ```
                     - Try Incognito/Private mode
                     - Clear browser cache (Ctrl+Shift+Delete)
                     - Disable browser extensions
-                    - Test camera: https://webcamtests.com
+                    - Test camera at: https://webcamtests.com
                     - Try different browser
                     - Restart browser completely
-                    ```
                     
-                    #### 6️⃣ Console Errors
-                    - Press F12 to open Developer Console
-                    - Check for red error messages
-                    - Look for "getUserMedia" or "NotAllowedError"
+                    #### 6️⃣ Console Errors (Advanced)
+                    - Press **F12** to open Developer Console
+                    - Look in **Console** tab for errors
+                    - Check for "getUserMedia" or "NotAllowedError"
+                    - Share errors in support if needed
+                    
+                    #### 7️⃣ Model Loading Issues
+                    - Ensure `best_crowd_counter_objects.pth` exists
+                    - Check file path in sidebar settings
+                    - Wait for "Models loaded!" message before clicking START
                     """)
                 
                 st.divider()
                 st.caption("🔒 Privacy: Video is processed locally in your browser. Nothing is stored or uploaded.")
-
 if __name__ == "__main__":
     main()
