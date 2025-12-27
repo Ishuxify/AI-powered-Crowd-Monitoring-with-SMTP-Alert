@@ -653,7 +653,11 @@ def create_analytics_graphs(stats):
 
 
 # ==================== WEBRTC VIDEO PROCESSOR ====================
+# ==================== WEBRTC VIDEO PROCESSOR (FIXED) ====================
 class VideoProcessor:
+    """
+    Fixed WebRTC processor with proper error handling
+    """
     def __init__(self):
         self.hybrid_counter = None
         self.alert_threshold = 50
@@ -662,15 +666,26 @@ class VideoProcessor:
         self.density_threshold = 30
         self.email_system = None
         self.email_sent = False
+        self.frame_count = 0
         
     def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        
-        if self.hybrid_counter is None:
-            return av.VideoFrame.from_ndarray(img, format="bgr24")
-        
-        # Process frame
+        """Process incoming video frame"""
         try:
+            # Convert frame to numpy array
+            img = frame.to_ndarray(format="bgr24")
+            
+            # If no counter loaded, return original frame with message
+            if self.hybrid_counter is None:
+                h, w = img.shape[:2]
+                cv2.rectangle(img, (0, 0), (w, 60), (0, 0, 0), -1)
+                cv2.putText(img, "Loading models...", (10, 35), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+                return av.VideoFrame.from_ndarray(img, format="bgr24")
+            
+            # Increment frame counter
+            self.frame_count += 1
+            
+            # Process every frame (no skipping for smooth video)
             annotated, density_map, final_count, mode, yolo_count = self.hybrid_counter.predict_adaptive(
                 img, 
                 yolo_conf=self.yolo_conf, 
@@ -680,47 +695,80 @@ class VideoProcessor:
             
             h, w = annotated.shape[:2]
             
-            # Add info overlay
+            # Create overlay background
             cv2.rectangle(annotated, (0, 0), (w, 140), (0, 0, 0), -1)
+            
+            # Mode color
             mode_color = (255, 165, 0) if mode == "YOLO + CSRNet" else (147, 112, 219)
             
-            cv2.putText(annotated, "Adaptive Hybrid: YOLO + CSRNet", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-            cv2.putText(annotated, f"Mode: {mode}", (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.6, mode_color, 2)
+            # Draw text overlays
+            cv2.putText(annotated, "Adaptive Hybrid: YOLO + CSRNet", 
+                       (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(annotated, f"Mode: {mode}", 
+                       (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.6, mode_color, 2)
+            cv2.putText(annotated, f"Count: {int(final_count)} | YOLO: {yolo_count} | Frame: {self.frame_count}", 
+                       (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
             
             # Alert handling
             if final_count > self.alert_threshold:
-                cv2.putText(annotated, f"ALERT! Count: {int(final_count)} > {self.alert_threshold}", (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-                cv2.rectangle(annotated, (0, h - 50), (w, h), (0, 0, 255), -1)
-                cv2.putText(annotated, f"ALERT! Count Exceeded!", (20, h - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                # Top alert text
+                cv2.putText(annotated, f"ALERT! {int(final_count)} > {self.alert_threshold}", 
+                           (10, 115), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
                 
-                # Send email (with cooldown)
+                # Bottom alert banner
+                cv2.rectangle(annotated, (0, h - 50), (w, h), (0, 0, 255), -1)
+                cv2.putText(annotated, "CROWD ALERT ACTIVE!", 
+                           (20, h - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                
+                # Send email (once per alert, with cooldown handled by EmailAlertSystem)
                 if self.email_system and self.email_system.enabled and not self.email_sent:
                     try:
+                        # Save frame temporarily
                         alert_image_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg').name
                         cv2.imwrite(alert_image_path, annotated)
-                        email_sent = self.email_system.send_alert_email(
+                        
+                        # Send email
+                        sent = self.email_system.send_alert_email(
                             subject="🚨 LIVE WEBCAM ALERT!", 
                             count=final_count, 
                             threshold=self.alert_threshold, 
-                            frame_info="Live Webcam", 
+                            frame_info=f"Live Feed - Frame {self.frame_count}", 
                             image_path=alert_image_path
                         )
-                        if email_sent:
+                        
+                        if sent:
                             self.email_sent = True
-                        os.unlink(alert_image_path)
+                        
+                        # Clean up temp file
+                        try:
+                            os.unlink(alert_image_path)
+                        except:
+                            pass
                     except Exception as e:
+                        # Silently fail on email errors
                         pass
             else:
-                cv2.putText(annotated, f"Normal - Count: {int(final_count)}", (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                # Normal status
+                cv2.putText(annotated, f"Normal - Count: {int(final_count)}", 
+                           (10, 115), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                # Reset email flag when count drops below threshold
                 self.email_sent = False
             
-            cv2.putText(annotated, f"Count: {int(final_count)} | YOLO: {yolo_count}", (10, 115), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            
+            # Return processed frame
             return av.VideoFrame.from_ndarray(annotated, format="bgr24")
-        
+            
         except Exception as e:
-            return av.VideoFrame.from_ndarray(img, format="bgr24")
-
+            # On any error, return original frame with error message
+            try:
+                img = frame.to_ndarray(format="bgr24")
+                h, w = img.shape[:2]
+                cv2.rectangle(img, (0, 0), (w, 60), (0, 0, 255), -1)
+                cv2.putText(img, f"Processing Error", 
+                           (10, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                return av.VideoFrame.from_ndarray(img, format="bgr24")
+            except:
+                # Last resort: return original frame unchanged
+                return frame
 
 # ==================== MAIN UI ====================
 def main():
@@ -887,8 +935,8 @@ def main():
                         st.session_state.yolo
                     )
                 
+                
                 # ✅ CRITICAL FIX: Capture references OUTSIDE factory function
-                # Store in variables accessible from thread context
                 hybrid_counter_ref = st.session_state.hybrid_counter
                 email_system_ref = EmailAlertSystem(recipient_list, enabled=enable_email)
                 
@@ -898,16 +946,17 @@ def main():
                 use_adaptive_val = use_adaptive
                 density_threshold_val = density_threshold
                 
-                # ✅ Factory function with captured values (NO session_state access)
+                # ✅ Factory function (NO session_state access inside!)
                 def create_video_processor():
                     """Factory that uses captured values from main thread"""
                     processor = VideoProcessor()
-                    processor.hybrid_counter = hybrid_counter_ref  # ← Uses captured reference
+                    processor.hybrid_counter = hybrid_counter_ref
                     processor.alert_threshold = alert_threshold_val
                     processor.yolo_conf = yolo_conf_val
                     processor.use_adaptive = use_adaptive_val
                     processor.density_threshold = density_threshold_val
                     processor.email_system = email_system_ref
+                    processor.email_sent = False
                     return processor
                 
                 st.warning("⚠️ **IMPORTANT**: Allow camera permission when browser asks!")
@@ -928,6 +977,30 @@ def main():
                     },
                     async_processing=True,
                 )
+              
+                # Debug info
+                st.markdown("---")
+                st.markdown("### 🔍 Debug Info")
+                
+                col_debug1, col_debug2, col_debug3 = st.columns(3)
+                
+                with col_debug1:
+                    st.write("**WebRTC State:**")
+                    st.write(f"- Playing: {ctx.state.playing}")
+                    st.write(f"- Signalling: {ctx.state.signalling}")
+                
+                with col_debug2:
+                    st.write("**Models:**")
+                    models_ok = 'models_loaded' in st.session_state and st.session_state.models_loaded
+                    st.write(f"- Loaded: {models_ok}")
+                    if models_ok:
+                        st.write(f"- Counter: {'✅' if 'hybrid_counter' in st.session_state else '❌'}")
+                
+                with col_debug3:
+                    st.write("**Settings:**")
+                    st.write(f"- Alert: {webcam_alert}")
+                    st.write(f"- YOLO: {yolo_conf}")
+                    st.write(f"- Adaptive: {use_adaptive}")
                 
                 # Status display
                 if ctx.state.playing:
