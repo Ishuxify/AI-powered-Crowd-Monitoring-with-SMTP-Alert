@@ -708,6 +708,8 @@ def main():
                         except:
                             pass
     
+   # Replace the entire WEBCAM TAB section (around line 710-880) with this:
+
     # ========== WEBCAM TAB ==========
     with tab2:
         st.markdown("### 🧠 Adaptive Hybrid: YOLO + CSRNet")
@@ -736,7 +738,7 @@ def main():
                 st.error(f"❌ CSRNet model not found: {model_path}")
                 st.info("Upload your trained model file first!")
             else:
-                # ✅ Step 1: Load models ONCE
+                # ✅ Load models ONCE
                 if 'models_loaded' not in st.session_state:
                     st.session_state.models_loaded = False
                 
@@ -755,14 +757,14 @@ def main():
                             st.error(f"❌ Model loading failed: {e}")
                             st.stop()
                 
-                # ✅ Step 2: Create hybrid counter ONCE
+                # ✅ Create hybrid counter ONCE
                 if 'hybrid_counter' not in st.session_state:
                     st.session_state.hybrid_counter = AdaptiveHybridCounter(
                         st.session_state.csrnet,
                         st.session_state.yolo
                     )
                 
-                # ✅ CRITICAL: Capture values BEFORE factory
+                # ✅ Capture values BEFORE factory
                 hybrid_counter_ref = st.session_state.hybrid_counter
                 email_system_ref = EmailAlertSystem(recipient_list, enabled=enable_email)
                 
@@ -772,7 +774,7 @@ def main():
                 adaptive_val = use_adaptive
                 density_val = density_threshold
                 
-                # ✅ Factory with captured values (NO session_state)
+                # ✅ Factory with captured values
                 def video_processor_factory():
                     return VideoProcessor(
                         hybrid_counter=hybrid_counter_ref,
@@ -785,49 +787,66 @@ def main():
                 
                 st.warning("⚠️ **Allow camera permission when browser asks!**")
                 
-                # ✅ WebRTC streamer
-                ctx = webrtc_streamer(
-                    key="crowd-detection-live",
-                    mode=WebRtcMode.SENDRECV,
-                    rtc_configuration=RTC_CONFIGURATION,
-                    video_processor_factory=video_processor_factory,
-                    media_stream_constraints={
-                        "video": {
-                            "width": {"ideal": 1280},
-                            "height": {"ideal": 720},
-                            "frameRate": {"ideal": 30}
+                # ✅ WebRTC streamer with error handling
+                try:
+                    ctx = webrtc_streamer(
+                        key="crowd-detection-live",
+                        mode=WebRtcMode.SENDRECV,
+                        rtc_configuration=RTC_CONFIGURATION,
+                        video_processor_factory=video_processor_factory,
+                        media_stream_constraints={
+                            "video": {
+                                "width": {"ideal": 1280},
+                                "height": {"ideal": 720},
+                                "frameRate": {"ideal": 30}
+                            },
+                            "audio": False
                         },
-                        "audio": False
-                    },
-                    async_processing=True,
-                )
-                
-                # Status display
-                if ctx.state.playing:
-                    st.success("✅ Webcam ACTIVE")
+                        async_processing=True,
+                    )
                     
-                    col_a, col_b, col_c = st.columns(3)
-                    with col_a:
-                        st.metric("Alert Threshold", webcam_alert)
-                    with col_b:
-                        st.metric("YOLO Conf", f"{yolo_conf:.2f}")
-                    with col_c:
-                        st.metric("Mode", "Adaptive" if use_adaptive else "Fixed")
-                    
-                    st.info("💡 To update settings: Click STOP → Adjust sliders → Click START")
+                    # Status display
+                    if ctx.state.playing:
+                        st.success("✅ Webcam ACTIVE")
                         
-                elif ctx.state.signalling:
-                    st.info("🔄 Connecting to camera...")
-                else:
-                    st.info("💡 **Click START button above** to activate webcam")
+                        col_a, col_b, col_c = st.columns(3)
+                        with col_a:
+                            st.metric("Alert Threshold", webcam_alert)
+                        with col_b:
+                            st.metric("YOLO Conf", f"{yolo_conf:.2f}")
+                        with col_c:
+                            st.metric("Mode", "Adaptive" if use_adaptive else "Fixed")
+                        
+                        st.info("💡 To update settings: Click STOP → Adjust sliders → Click START")
+                            
+                    elif ctx.state.signalling:
+                        st.info("🔄 Connecting to camera...")
+                    else:
+                        st.info("💡 **Click START button above** to activate webcam")
+                        
+                        st.markdown("""
+                        ### 📋 Quick Start:
+                        1. **Adjust settings** on the left
+                        2. Click **START** button ⬆️
+                        3. **Allow camera** in browser
+                        4. Wait 2-3 seconds
+                        5. To change: **STOP** → Adjust → **START**
+                        """)
+                
+                except Exception as e:
+                    st.error(f"❌ WebRTC Error: {str(e)}")
+                    st.info("🔄 Try refreshing the page")
                     
-                    st.markdown("""
-                    ### 📋 Quick Start:
-                    1. **Adjust settings** on the left
-                    2. Click **START** button ⬆️
-                    3. **Allow camera** in browser
-                    4. Wait 2-3 seconds
-                    5. To change: **STOP** → Adjust → **START**
+                    # Show fallback options
+                    st.warning("""
+                    ### 🆘 Camera Not Working?
+                    
+                    **Quick Fixes:**
+                    1. **Refresh page** (F5)
+                    2. Try **Chrome/Edge** browser
+                    3. Check camera permission in browser
+                    4. Close other apps using camera
+                    5. Use **HTTPS** (Streamlit Cloud does this automatically)
                     """)
                 
                 # Troubleshooting
@@ -865,15 +884,17 @@ def main():
                     - Try different browser
                     - Restart browser
                     
-                    **6. Check Console**
-                    - Press F12
-                    - Look for errors in Console tab
-                    - Share errors if needed
+                    **6. Python Version**
+                    - Must use Python 3.11 
+                    - Check runtime.txt
+                    
+                    **7. Dependencies**
+                    - Make sure aiortc==1.6.0
+                    - Make sure aioice==0.9.0
                     """)
                 
                 st.divider()
                 st.caption("🔒 Privacy: Processed locally in browser. Nothing stored.")
-
 
 if __name__ == "__main__":
     main()
