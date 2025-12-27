@@ -787,94 +787,75 @@ def main():
                             pass
     
     # TAB 2 - FIXED WEBCAM CODE
-    with tab2:
-        st.markdown("### 🧠 Adaptive Hybrid Strategy: YOLO + CSRNet")
-        st.info("✅ **WebRTC Enabled** - Browser camera will be used.")
-        
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            st.markdown("#### ⚙️ Live Settings")
-            webcam_alert = st.slider("Alert Threshold", 5, 100, 50, 5, key="webcam_alert")
-            yolo_conf = st.slider("YOLO Confidence", 0.2, 0.8, 0.4, 0.05, key="yolo_conf")
-            density_threshold = st.slider("Dense Crowd Threshold", 10, 100, 30, 5, key="density_thresh")
-            use_adaptive = st.checkbox("Enable Adaptive Mode", value=True, key="use_adaptive")
-            
-            if st.button("🔄 Reset Tracker"):
-                if 'hybrid_counter' in st.session_state and st.session_state.hybrid_counter:
-                    st.session_state.hybrid_counter.reset_tracker()
-                    st.success("✅ Tracker reset!")
-        
-        with col2:
-            st.markdown("#### 📷 Live Webcam Feed (WebRTC)")
-            
-            if not Path(model_path).exists():
-                st.error(f"❌ CSRNet model not found: {model_path}")
-            else:
-                # Initialize models
-                if 'models_loaded' not in st.session_state:
-                    st.session_state.models_loaded = False
-                
-                if not st.session_state.models_loaded:
-                    with st.spinner("🔄 Loading models..."):
-                        try:
-                            st.session_state.csrnet = load_trained_model(model_path)
-                            st.session_state.yolo = load_yolo_model()
-                            st.session_state.models_loaded = True
-                            st.success("✅ Models loaded!")
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Failed: {e}")
-                            st.stop()
-                
-                # Create counter
-                if 'hybrid_counter' not in st.session_state:
-                    st.session_state.hybrid_counter = AdaptiveHybridCounter(
-                        st.session_state.csrnet, st.session_state.yolo
-                    )
-                
-                # 🔥 CRITICAL: Capture BEFORE factory
-                counter_ref = st.session_state.hybrid_counter
-                email_ref = EmailAlertSystem(recipient_list, enabled=enable_email)
-                alert_val = webcam_alert
-                conf_val = yolo_conf
-                adaptive_val = use_adaptive
-                density_val = density_threshold
-                
-                # Factory function
-                def make_processor():
-                    p = VideoProcessor()
-                    p.hybrid_counter = counter_ref
-                    p.alert_threshold = alert_val
-                    p.yolo_conf = conf_val
-                    p.use_adaptive = adaptive_val
-                    p.density_threshold = density_val
-                    p.email_system = email_ref
-                    return p
-                
-                st.warning("⚠️ Allow camera permission!")
-                
-                ctx = webrtc_streamer(
-                    key="crowd-live",
-                    mode=WebRtcMode.SENDRECV,
-                    rtc_configuration=RTC_CONFIGURATION,
-                    video_processor_factory=make_processor,
-                    media_stream_constraints={"video": True, "audio": False},
-                    async_processing=True,
+    with col2:
+    st.markdown("#### 📷 Live Webcam Feed")
+    
+    if not Path(model_path).exists():
+        st.error(f"❌ Model not found: {model_path}")
+        st.stop()
+    
+    # ✅ FIX 1: Models load WITHOUT rerun
+    if 'models_loaded' not in st.session_state:
+        st.session_state.models_loaded = False
+    
+    if not st.session_state.models_loaded:
+        with st.spinner("🔄 Loading AI models..."):
+            try:
+                st.session_state.csrnet = load_trained_model(model_path)
+                st.session_state.yolo = load_yolo_model()
+                st.session_state.hybrid_counter = AdaptiveHybridCounter(
+                    st.session_state.csrnet,
+                    st.session_state.yolo
                 )
-                
-                if ctx.state.playing:
-                    st.success("✅ ACTIVE!")
-                    col_a, col_b, col_c = st.columns(3)
-                    with col_a:
-                        st.metric("Alert", webcam_alert)
-                    with col_b:
-                        st.metric("YOLO", f"{yolo_conf:.2f}")
-                    with col_c:
-                        st.metric("Mode", "Adaptive" if use_adaptive else "Fixed")
-                else:
-                    st.info("💡 Click START button to activate webcam")
-
+                st.session_state.models_loaded = True
+                # ❌ NO st.rerun() here!
+            except Exception as e:
+                st.error(f"❌ Model loading failed: {e}")
+                st.stop()
+    
+    # ✅ FIX 2: Check if models are loaded
+    if st.session_state.models_loaded:
+        # ✅ FIX 3: Capture references AFTER verification
+        counter_ref = st.session_state.hybrid_counter
+        email_ref = EmailAlertSystem(recipient_list, enabled=enable_email)
+        
+        def make_processor():
+            p = VideoProcessor()
+            p.hybrid_counter = counter_ref
+            p.alert_threshold = webcam_alert
+            p.yolo_conf = yolo_conf
+            p.use_adaptive = use_adaptive
+            p.density_threshold = density_threshold
+            p.email_system = email_ref
+            return p
+        
+        st.warning("⚠️ Allow camera permission when prompted!")
+        
+        # ✅ FIX 4: Unique key to avoid conflicts
+        ctx = webrtc_streamer(
+            key="live-crowd-monitor",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration=RTC_CONFIGURATION,
+            video_processor_factory=make_processor,
+            media_stream_constraints={
+                "video": {"width": 1280, "height": 720},
+                "audio": False
+            },
+            async_processing=True,
+        )
+        
+        if ctx.state.playing:
+            st.success("✅ Webcam ACTIVE - Processing live!")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.metric("Alert Threshold", webcam_alert)
+            with col_b:
+                st.metric("YOLO Confidence", f"{yolo_conf:.2f}")
+        elif ctx.state.signalling:
+            st.info("🔄 Connecting to camera...")
+        else:
+            st.info("💡 Click **START** button above to begin")
+    else:
+        st.warning("⏳ Please wait for models to load...")
 if __name__ == "__main__":
     main()
