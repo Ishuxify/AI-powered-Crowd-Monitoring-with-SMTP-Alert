@@ -326,7 +326,7 @@ class AdaptiveHybridCounter:
         self.device = DEVICE
         self.mean = IMAGENET_MEAN
         self.std = IMAGENET_STD
-        self.tracker = sv.ByteTrack(track_activation_threshold=0.3, lost_track_buffer=30, minimum_matching_threshold=0.8, frame_rate=30)
+        self.tracker = sv.ByteTrack()
         self.count_history = deque(maxlen=5)
         self.box_annotator = sv.BoxAnnotator(thickness=2, color=sv.Color.from_rgb_tuple((0, 255, 255)))
         self.label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1, color=sv.Color.from_rgb_tuple((255, 255, 255)))
@@ -442,8 +442,8 @@ class AdaptiveHybridCounter:
         return annotated
     
     def reset_tracker(self):
-        self.tracker = sv.ByteTrack(track_activation_threshold=0.3, lost_track_buffer=30, minimum_matching_threshold=0.8, frame_rate=30)
-        self.count_history.clear()
+       self.tracker = sv.ByteTrack()
+       self.count_history.clear()
 
 
 # ==================== VIDEO PROCESSING ====================

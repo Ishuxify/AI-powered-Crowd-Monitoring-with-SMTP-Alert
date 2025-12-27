@@ -3,7 +3,7 @@ torch==2.1.2
 torchvision==0.16.2
 opencv-python-headless==4.9.0.80
 ultralytics==8.1.24
-supervision==0.18.0
+supervision==0.22.0
 matplotlib==3.8.2
 numpy==1.26.3
 pillow==10.2.0
