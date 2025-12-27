@@ -9,7 +9,7 @@ numpy==1.26.3
 pillow==10.2.0
 plotly==5.18.0
 streamlit-webrtc==0.47.7
-av==12.0.0
+av==11.0.0
 aiortc==1.7.0
 aioice==0.9.0
 pyee==11.1.0
