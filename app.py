@@ -464,11 +464,20 @@ def process_video_streamlit(video_path, counter, alert_threshold, frame_skip, us
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
     output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-    fourcc = cv2.VideoWriter_fourcc(*'avc1')
+    
+    # ✅ FIXED: Use mp4v instead of avc1
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
     if not out.isOpened():
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        # Fallback to XVID
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    if not out.isOpened():
+        st.error("❌ Could not initialize video writer. Check FFmpeg installation.")
+        cap.release()
+        return None
     
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -576,7 +585,6 @@ def process_video_streamlit(video_path, counter, alert_threshold, frame_skip, us
     }
     return stats
 
-
 # ==================== ANALYTICS ====================
 def create_analytics_graphs(stats):
     if not stats or 'count_values' not in stats:
@@ -658,7 +666,7 @@ def create_analytics_graphs(stats):
 
 
 # ==================== WEBRTC VIDEO PROCESSOR ====================
-# ==================== WEBRTC VIDEO PROCESSOR (FIXED) ====================
+
 class VideoProcessor:
     """
     Fixed WebRTC processor with proper error handling
